@@ -1,9 +1,9 @@
 // Minimapa circular que gira con la cámara, mapa completo y ruta GPS (A* sobre calles reales).
 import map from '../world/mapData.js';
-import { edgeX } from '../world/terrain.js';
+import { groundY, BOUNDS } from '../world/terrain.js';
 
 const PX = 0.5; // píxeles por metro en el mapa pre-renderizado
-const SIZE = 2400, OFF = 1200;
+const B = BOUNDS, BW = B.x1 - B.x0, BD = B.z1 - B.z0;
 
 export class GPS {
   constructor(game) { this.g = game; this.target = null; this.points = []; this.color = '#ffd54f'; this.t = 0; this.blipOnly = false; this._path = []; }
@@ -35,21 +35,27 @@ export class Minimap {
   }
 
   prerender() {
-    const c = document.createElement('canvas'); c.width = c.height = SIZE * PX;
+    const c = document.createElement('canvas'); c.width = Math.ceil(BW * PX); c.height = Math.ceil(BD * PX);
     const g = c.getContext('2d');
-    const T = (v) => (v + OFF) * PX;
-    g.fillStyle = '#9fc77a'; g.fillRect(0, 0, c.width, c.height);
-    // Barranca
-    g.fillStyle = '#3f6e3a'; g.beginPath(); g.moveTo(T(edgeX(-OFF)), 0);
-    for (let z = -OFF; z <= OFF; z += 25) g.lineTo(T(edgeX(z)), T(z));
-    g.lineTo(c.width, c.height); g.lineTo(c.width, 0); g.closePath(); g.fill();
+    const T = (v) => (v - B.x0) * PX, TZ = (v) => (v - B.z0) * PX;
+    // Relieve sombreado a partir del modelo de elevación real (luz del noroeste)
+    const img = g.createImageData(c.width, c.height), d = img.data;
+    for (let j = 0; j < c.height; j++) for (let i = 0; i < c.width; i++) {
+      const x = B.x0 + i / PX, z = B.z0 + j / PX, h = groundY(x, z);
+      const gx = (groundY(x + 4, z) - groundY(x - 4, z)) / 8, gz = (groundY(x, z + 4) - groundY(x, z - 4)) / 8;
+      const shade = Math.max(0.35, Math.min(1.25, 0.9 + (gx + gz) * -0.9));
+      const low = Math.max(0, Math.min(1, -h / 200)), high = Math.max(0, Math.min(1, (h - 30) / 120));
+      const k = (j * c.width + i) * 4;
+      d[k] = (150 - low * 70 - high * 20) * shade; d[k + 1] = (190 - low * 60 - high * 30) * shade; d[k + 2] = (115 - low * 40) * shade; d[k + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
     g.strokeStyle = '#4fa3c7'; g.lineWidth = 4; g.beginPath();
-    for (let i = 0; i < map.river.length; i += 2) (i ? g.lineTo : g.moveTo).call(g, T(map.river[i]), T(map.river[i + 1]));
+    for (let i = 0; i < map.river.length; i += 2) (i ? g.lineTo : g.moveTo).call(g, T(map.river[i]), TZ(map.river[i + 1]));
     g.stroke();
     // Áreas
     for (const a of map.areas) {
       g.fillStyle = a.n === 'Zócalo' || a.n.includes('Plazuela') ? '#e8d9b8' : a.k === 'cemetery' ? '#b8c7a3' : '#79b84e';
-      g.beginPath(); for (let i = 0; i < a.p.length; i += 2) (i ? g.lineTo : g.moveTo).call(g, T(a.p[i]), T(a.p[i + 1])); g.closePath(); g.fill();
+      g.beginPath(); for (let i = 0; i < a.p.length; i += 2) (i ? g.lineTo : g.moveTo).call(g, T(a.p[i]), TZ(a.p[i + 1])); g.closePath(); g.fill();
     }
     // Calles (de menor a mayor jerarquía)
     const order = [...map.ways].sort((a, b) => b.t - a.t);
@@ -60,7 +66,7 @@ export class Minimap {
       g.lineWidth = (pass === 0 ? w.w + 3 : w.w) * PX * 1.4;
       if (!drive && pass === 0) continue;
       g.beginPath();
-      w.ids.forEach((id, i) => { const x = T(map.nodes[id * 2]), z = T(map.nodes[id * 2 + 1]); i ? g.lineTo(x, z) : g.moveTo(x, z); });
+      w.ids.forEach((id, i) => { const x = T(map.nodes[id * 2]), z = TZ(map.nodes[id * 2 + 1]); i ? g.lineTo(x, z) : g.moveTo(x, z); });
       g.stroke();
     }
     return c;
@@ -73,7 +79,7 @@ export class Minimap {
     ctx.rotate(rot);
     ctx.scale(scale, scale);
     ctx.translate(-cx, -cz);
-    ctx.drawImage(this.bg, -OFF, -OFF, SIZE, SIZE);
+    ctx.drawImage(this.bg, B.x0, B.z0, BW, BD);
     // Ruta GPS
     const pts = g.gps.points;
     if (pts.length > 2) {
@@ -155,11 +161,12 @@ export class Minimap {
   drawBig() {
     const g = this.g, c = this.big, ctx = this.bctx;
     const w = (c.width = c.clientWidth * devicePixelRatio), h = (c.height = c.clientHeight * devicePixelRatio);
-    const scale = Math.min(w, h) / 2100;
+    const scale = Math.min(w / BW, h / BD) * 0.98;
     ctx.fillStyle = '#3f6e3a'; ctx.fillRect(0, 0, w, h);
-    this.drawWorld(ctx, 0, 0, scale, 0, w, h, true);
-    this.drawBlips(ctx, 0, 0, scale, 0, w, h, 0);
-    const p = g.player.pos(), [sx, sy] = this.project(p.x, p.z, 0, 0, scale, 0, w, h);
+    const mx = (B.x0 + B.x1) / 2, mz = (B.z0 + B.z1) / 2;
+    this.drawWorld(ctx, mx, mz, scale, 0, w, h, true);
+    this.drawBlips(ctx, mx, mz, scale, 0, w, h, 0);
+    const p = g.player.pos(), [sx, sy] = this.project(p.x, p.z, mx, mz, scale, 0, w, h);
     const yaw = g.player.inVehicle ? g.player.vehicle.yaw : g.player.ch.yaw;
     this.drawPlayerArrow(ctx, sx, sy, Math.PI - yaw);
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.font = `${12 * devicePixelRatio}px sans-serif`; ctx.textAlign = 'right';

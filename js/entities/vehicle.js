@@ -5,6 +5,7 @@ import { coloredMerge } from '../world/cityBuilder.js';
 import { resolveCircle } from '../systems/physics.js';
 import { clamp, lerp, lerpAngle, damp } from '../util.js';
 import { groundY } from '../world/terrain.js';
+import { RoundedBoxGeometry } from '../../lib/jsm/geometries/RoundedBoxGeometry.js';
 
 // len, wid: dimensiones; maxV en m/s; acc, brk en m/s²; grip lateral; hp
 export const TYPES = {
@@ -142,7 +143,8 @@ function bodyGeometry(type) {
   const S = TYPES[type], L = S.len, W = S.wid;
   const P = 0xffffff, GL = 0x22303c, BLK = 0x1f1f22, HL = 0xfff6cf, TL = 0xd32f2f, CH = 0xd0d0d0;
   const parts = [];
-  const box = (w, h, d, x, y, z, c) => parts.push([new THREE.BoxGeometry(w, h, d).translate(x, y + h / 2, z), c]);
+  // Piezas grandes con aristas redondeadas (carrocería creíble); detalles pequeños como cajas
+  const box = (w, h, d, x, y, z, c) => parts.push([(w > 0.8 && h > 0.3 && d > 0.8 ? new RoundedBoxGeometry(w, h, d, 2, Math.min(0.14, h * 0.3)) : new THREE.BoxGeometry(w, h, d)).translate(x, y + h / 2, z), c]);
   const cabin = (w, h, d, x, y, z, c, taper = 0.78) => {
     const g = new THREE.BoxGeometry(w, h, d).translate(0, h / 2, 0);
     const p = g.attributes.position;
@@ -194,7 +196,7 @@ function bodyGeometry(type) {
 
 export class VehicleRenderer {
   constructor(scene, capacity = 48) {
-    this.mat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap });
+    this.mat = new THREE.MeshStandardMaterial({ roughness: 0.32, metalness: 0.35, vertexColors: true });
     this.meshes = {};
     for (const t of Object.keys(TYPES)) {
       const m = new THREE.InstancedMesh(bodyGeometry(t), this.mat, capacity);

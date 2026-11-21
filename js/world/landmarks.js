@@ -3,9 +3,9 @@ import * as THREE from 'three';
 import map from './mapData.js';
 import { coloredMerge, fitObb, centroid } from './cityBuilder.js';
 import { gradientMap, shared, toon } from './materials.js';
-import { edgeX, heightAt, groundY } from './terrain.js';
+import { edgeX, heightAt, groundY, unbuildable, EDGE_Z } from './terrain.js';
 
-const vcMat = () => new THREE.MeshToonMaterial({ vertexColors: true, gradientMap });
+const vcMat = () => new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, vertexColors: true });
 
 // Lista de piezas que se fusionan en una sola malla (1 draw call por monumento).
 class Parts {
@@ -180,7 +180,7 @@ export class Landmarks {
       for (let x = 0; x <= 22; x += 2) { p.box(0.15, 1.1, 0.15, x, 0, -2.2, 0x9aa4a8); p.box(0.15, 1.1, 0.15, x, 0, 2.2, 0x9aa4a8); }
       p.box(2, 0.6, 6, -1, -0.6, 0, 0x8f7b62);
       const my = groundY(ex, mz), frame = p.mesh(ex, mz, 0, my);
-      const glass = new THREE.Mesh(new THREE.BoxGeometry(22, 0.15, 4.4).translate(11, -0.08, 0), new THREE.MeshToonMaterial({ color: 0x9fe3ff, transparent: true, opacity: 0.35, gradientMap, depthWrite: false }));
+      const glass = new THREE.Mesh(new THREE.BoxGeometry(22, 0.15, 4.4).translate(11, -0.08, 0), new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, color: 0x9fe3ff, transparent: true, opacity: 0.35, depthWrite: false }));
       glass.position.set(ex, my, mz);
       S.add(frame, glass);
       this.mirador = { x0: ex - 3, x1: ex + 22, z0: mz - 2, z1: mz + 2 };
@@ -211,7 +211,7 @@ export class Landmarks {
       fall.matrix.makeBasis(xAx, yAx.multiplyScalar(len / 160), zAx).setPosition(top.clone().add(bot).multiplyScalar(0.5));
       mat.side = THREE.DoubleSide;
       S.add(fall);
-      const pool = new THREE.Mesh(new THREE.CircleGeometry(12, 16).rotateX(-Math.PI / 2), new THREE.MeshToonMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, gradientMap }));
+      const pool = new THREE.Mesh(new THREE.CircleGeometry(12, 16).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, color: 0xffffff, transparent: true, opacity: 0.6 }));
       pool.position.copy(bot).add(new THREE.Vector3(0, 0.3, 0));
       S.add(pool);
       world.places['Cascada'] = [ex - 8, cz];
@@ -220,8 +220,7 @@ export class Landmarks {
     // --- Barandal de la ceja de la barranca ---
     {
       const p = new Parts();
-      const lim = map.limit - 12;
-      for (let z = -lim; z < lim; z += 4) {
+      for (let z = EDGE_Z[0]; z < EDGE_Z[1]; z += 4) {
         if (this.mirador && z > this.mirador.z0 - 2 && z < this.mirador.z1 + 2) continue;
         const x0 = edgeX(z) - 2.2, x1 = edgeX(z + 4) - 2.2;
         const gy0 = groundY(x0, z), gy1 = groundY(x1, z + 4);
@@ -253,7 +252,7 @@ export class Landmarks {
           const rx = g.x[a] + dx * t, rz = g.z[a] + dz * t;
           const off = e.width / 2 + 2.2 + D / 2;
           const cx = rx - uz * sg * off, cz = rz + ux * sg * off;
-          if (cx > edgeX(cz) - 12) continue;
+          if (unbuildable(cx, cz, 12)) continue;
           if (world.occBox(cx, cz, W / 2 + 1, D / 2 + 1, ang, 0)) {
             world.occBox(cx, cz, W / 2 + 1, D / 2 + 1, ang, 1, 3);
             // frente: punto sobre la banqueta frente a la puerta

@@ -4,10 +4,10 @@ import { RoadGraph, DRIVABLE_MAX_TYPE } from './graph.js';
 import { ChunkedInstances } from './chunks.js';
 import { gradientMap, makeFacadeMaterial, makeRailingMaterial, makeSignMaterial, makeRoadMaterial, makeRoofMaterial, toon, shared } from './materials.js';
 import { STYLE, PALETTES, TEJAS, SHOPS, styleAt } from './streetStyles.js';
-import { buildTerrain, heightAt, edgeX, groundY } from './terrain.js';
+import { buildTerrain, heightAt, edgeX, groundY, unbuildable, slopeAt, BOUNDS } from './terrain.js';
 import { SpatialGrid, rng, clamp, pick } from '../util.js';
 
-const OCC = 2, OCC_N = 1200, OCC_O = -1200; // ocupación en celdas de 2 m
+const OCC = 2, OCC_OX = BOUNDS.x0, OCC_OZ = BOUNDS.z0, OCC_NX = Math.ceil((BOUNDS.x1 - BOUNDS.x0) / OCC), OCC_NZ = Math.ceil((BOUNDS.z1 - BOUNDS.z0) / OCC); // ocupación en celdas de 2 m
 export const CENTRO_R = 460; // radio del centro histórico (adoquín, casas blancas)
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _c = new THREE.Color();
@@ -18,7 +18,7 @@ export class World {
     this.scene = scene;
     this.grid = new SpatialGrid(24);
     this.colliders = [];
-    this.occ = new Uint8Array(OCC_N * OCC_N);
+    this.occ = new Uint8Array(OCC_NX * OCC_NZ);
     this.graph = new RoadGraph();
     this.chunked = [];
     this.lampMat = null;
@@ -39,9 +39,9 @@ export class World {
 
   // ---------- Ocupación (evita que casas invadan calles o monumentos) ----------
   occIdx(x, z) {
-    const i = Math.floor((x - OCC_O) / OCC), j = Math.floor((z - OCC_O) / OCC);
-    if (i < 0 || j < 0 || i >= OCC_N || j >= OCC_N) return -1;
-    return j * OCC_N + i;
+    const i = Math.floor((x - OCC_OX) / OCC), j = Math.floor((z - OCC_OZ) / OCC);
+    if (i < 0 || j < 0 || i >= OCC_NX || j >= OCC_NZ) return -1;
+    return j * OCC_NX + i;
   }
   occAt(x, z) { const k = this.occIdx(x, z); return k < 0 ? 1 : this.occ[k]; }
   // Recorre la huella de una caja orientada; mode 0 = probar, 1 = marcar.
@@ -130,7 +130,7 @@ export class World {
       mesh.receiveShadow = true; this.scene.add(mesh); return mesh;
     };
     mk(side, 1); mk(road, 2); mk(mark, 3);
-    const cm = new THREE.Mesh(curb.geometry(true), new THREE.MeshToonMaterial({ vertexColors: true, gradientMap }));
+    const cm = new THREE.Mesh(curb.geometry(true), new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, vertexColors: true }));
     cm.receiveShadow = true; this.scene.add(cm);
   }
 
@@ -144,7 +144,7 @@ export class World {
       const c = centroid(a.p);
       if (a.n) this.places[a.n] = c;
     }
-    const mesh = new THREE.Mesh(gb.geometry(), new THREE.MeshToonMaterial({ vertexColors: true, gradientMap, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 }));
+    const mesh = new THREE.Mesh(gb.geometry(), makeRoadMaterial(4));
     mesh.receiveShadow = true; this.scene.add(mesh);
   }
 
@@ -169,7 +169,7 @@ export class World {
     if (geos.length) {
       for (const g of geos) { g.deleteAttribute('uv'); }
       const merged = mergeSimple(geos);
-      const mat = makeFacadeMaterial(); mat.color.set(0xf1e6d2);
+      const mat = makeFacadeMaterial(false); mat.color.set(0xf1e6d2);
       const mesh = new THREE.Mesh(merged, mat);
       mesh.castShadow = mesh.receiveShadow = true;
       this.scene.add(mesh);
@@ -179,7 +179,7 @@ export class World {
   buildHouses() {
     const r = rng(20261120);
     const box = new THREE.BoxGeometry(1, 1, 1); box.translate(0, 0.5, 0);
-    const vc = () => new THREE.MeshToonMaterial({ vertexColors: true, gradientMap });
+    const vc = () => new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, vertexColors: true });
     const walls = new ChunkedInstances(this.scene, box, this.facadeMat || (this.facadeMat = makeFacadeMaterial()), { name: 'casas' });
     const roofs = new ChunkedInstances(this.scene, gableGeometry(), makeRoofMaterial(), { name: 'tejados' });
     const tank = coloredMerge([[new THREE.CylinderGeometry(0.55, 0.6, 1.2, 10).translate(0, 0.6, 0), 0x2b2b2e], [new THREE.CylinderGeometry(0.25, 0.3, 0.12, 8).translate(0, 1.26, 0), 0x2b2b2e]]);
@@ -226,7 +226,7 @@ export class World {
             const cx = cx0 + nx * off, cz = cz0 + nz * off;
             const rad = Math.hypot(cx, cz);
             const dens = rad < 650 ? 1 : clamp(1 - (rad - 650) / 700, 0.3, 1);
-            if (s + W > L || cx > edgeX(cz) - 10 || r() > dens) { s += 3; continue; }
+            if (s + W > L || unbuildable(cx, cz, 10) || r() > dens) { s += 3; continue; }
             if (!this.occBox(cx, cz, W / 2, D / 2, a, 0)) { s += 1.5; continue; }
             this.occBox(cx, cz, W / 2, D / 2, a, 1);
             const style = styleAt(cx, cz);
@@ -301,18 +301,20 @@ export class World {
       [new THREE.IcosahedronGeometry(1.2, 0).translate(-1.1, 3.6, -0.6), 0x4f8a33],
       [new THREE.IcosahedronGeometry(1.0, 0).translate(0.2, 5.1, 0.3), 0x7cbd50],
     ]);
-    const mat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap });
-    const pines = new ChunkedInstances(this.scene, pine, mat, { name: 'pinos' });
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, vertexColors: true });
+    const pines = new ChunkedInstances(this.scene, pine, mat, { name: 'pinos', maxDist: 520 });
     const trees = new ChunkedInstances(this.scene, leafy, mat, { name: 'arboles', maxDist: 320 });
     this.chunked.push(pines, trees);
     const add = (set, x, z, s) => { _q.setFromAxisAngle(UP, r() * 6.28); _m.compose(_p.set(x, heightAt(x, z) - 0.2, z), _q, _s.set(s, s * (0.85 + r() * 0.4), s)); set.add(_m); };
     // Barranca y sierra
     let n = 0;
-    for (let i = 0; i < 40000 && n < 3200; i++) {
-      const x = (r() - 0.5) * 3600, z = (r() - 0.5) * 3600;
+    const B = BOUNDS;
+    for (let i = 0; i < 90000 && n < 7000; i++) {
+      const x = B.x0 + r() * (B.x1 - B.x0), z = B.z0 + r() * (B.z1 - B.z0);
       const h = heightAt(x, z);
       const m = Math.max(Math.abs(x), Math.abs(z));
-      if ((x > edgeX(z) + 6 && h < -8) || m > map.limit + 40) { add(pines, x, z, 0.9 + r() * 0.8); n++; }
+      const sl = slopeAt(x, z);
+      if ((sl > 0.22 || h < -25 || h > 45) && this.occAt(x, z) === 0 && sl < 1.6) { add(pines, x, z, 0.9 + r() * 0.8); n++; }
     }
     // Parques y zócalo
     for (const a of map.areas) {
@@ -328,8 +330,8 @@ export class World {
     }
     // Huertos de manzanos y árboles en patios libres
     for (let i = 0; i < 30000; i++) {
-      const x = (r() - 0.5) * 2200, z = (r() - 0.5) * 2200;
-      if (x > edgeX(z) - 8) continue;
+      const x = B.x0 + r() * (B.x1 - B.x0), z = B.z0 + r() * (B.z1 - B.z0);
+      if (unbuildable(x, z, 8)) continue;
       if (!this.occBox(x, z, 2, 2, 0, 0)) continue;
       const rad = Math.hypot(x, z);
       if (r() > (rad < 500 ? 0.04 : 0.25)) continue;
@@ -345,8 +347,8 @@ export class World {
       [new THREE.BoxGeometry(0.1, 0.1, 0.9).translate(0, 4.1, 0.4), 0x1d1f24],
     ]);
     const head = new THREE.BoxGeometry(0.42, 0.55, 0.42).translate(0, 3.85, 0.85);
-    this.lampMat = new THREE.MeshToonMaterial({ color: 0xfff1c4, emissive: 0xffc85a, emissiveIntensity: 0, gradientMap });
-    const poles = new ChunkedInstances(this.scene, pole, new THREE.MeshToonMaterial({ vertexColors: true, gradientMap }), { name: 'postes', castShadow: false });
+    this.lampMat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, color: 0xfff1c4, emissive: 0xffc85a, emissiveIntensity: 0 });
+    const poles = new ChunkedInstances(this.scene, pole, new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, vertexColors: true }), { name: 'postes', castShadow: false });
     const heads = new ChunkedInstances(this.scene, head, this.lampMat, { name: 'faroles', castShadow: false });
     this.chunked.push(poles, heads);
     this.lampPositions = [];
@@ -361,7 +363,7 @@ export class World {
         for (let s = (30 - acc) % 30; s < L; s += 30) {
           const off = way.w / 2 + 1.0;
           const x = ax + ux * s - uz * off, z = az + uz * s + ux * off;
-          if (x > edgeX(z) - 4) continue;
+          if (unbuildable(x, z, 4)) continue;
           _q.setFromAxisAngle(UP, Math.atan2(uz, -ux));
           _m.compose(_p.set(x, groundY(x, z), z), _q, _s.set(1, 1, 1));
           poles.add(_m); heads.add(_m);
@@ -375,7 +377,7 @@ export class World {
   // Bancas y jardineras en plazas; postes de luz con cables colgantes en calles de barrio.
   buildFurniture() {
     const r = rng(555);
-    const vc = () => new THREE.MeshToonMaterial({ vertexColors: true, gradientMap });
+    const vc = () => new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, vertexColors: true });
     const bench = coloredMerge([
       [new THREE.BoxGeometry(1.8, 0.08, 0.45).translate(0, 0.45, 0), 0x8d5a2b], [new THREE.BoxGeometry(1.8, 0.4, 0.07).translate(0, 0.75, -0.2), 0x8d5a2b],
       [new THREE.BoxGeometry(0.08, 0.45, 0.45).translate(-0.8, 0.22, 0), 0x1d1f24], [new THREE.BoxGeometry(0.08, 0.45, 0.45).translate(0.8, 0.22, 0), 0x1d1f24],
@@ -418,7 +420,7 @@ export class World {
         const [ax, az] = pts[i], [bx, bz] = pts[i + 1], L = Math.hypot(bx - ax, bz - az) || 1;
         const ux = (bx - ax) / L, uz = (bz - az) / L, off = -(way.w / 2 + 1.1);
         const x = ax - uz * off, z = az + ux * off;
-        if (x > edgeX(z) - 4 || this.occAt(x, z) === 2) { prev = null; continue; }
+        if (unbuildable(x, z, 4) || this.occAt(x, z) === 2) { prev = null; continue; }
         const gy = groundY(x, z);
         _q.setFromAxisAngle(UP, Math.atan2(-ux, -uz)); // cruceta perpendicular a la calle
         _m.compose(_p.set(x, gy, z), _q, _s.set(1, 1, 1)); poles.add(_m);

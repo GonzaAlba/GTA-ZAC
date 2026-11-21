@@ -36,15 +36,16 @@ const P = { TORSO: 0, HEAD: 1, ARM_L: 2, ARM_R: 3, LEG_L: 4, LEG_R: 5, HAIR: 6, 
 
 export class CrowdRenderer {
   constructor(scene, capacity = 80) {
-    const mat = new THREE.MeshToonMaterial({ gradientMap, color: 0xffffff });
-    const matVC = new THREE.MeshToonMaterial({ gradientMap, color: 0xffffff, vertexColors: true });
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, color: 0xffffff });
+    const matVC = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, color: 0xffffff, vertexColors: true });
     const geos = [];
-    geos[P.TORSO] = new THREE.BoxGeometry(0.56, 0.66, 0.32).translate(0, 0.33, 0);
+    geos[P.TORSO] = new THREE.CapsuleGeometry(0.17, 0.3, 4, 12).scale(1.3, 1, 0.78).translate(0, 0.33, 0);
     geos[P.HEAD] = new THREE.IcosahedronGeometry(0.27, 1);
-    geos[P.ARM_L] = geos[P.ARM_R] = new THREE.BoxGeometry(0.16, 0.62, 0.18).translate(0, -0.3, 0);
-    geos[P.LEG_L] = geos[P.LEG_R] = new THREE.BoxGeometry(0.21, 0.86, 0.24).translate(0, -0.43, 0);
-    geos[P.HAIR] = new THREE.SphereGeometry(0.29, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+    geos[P.ARM_L] = geos[P.ARM_R] = new THREE.CapsuleGeometry(0.052, 0.5, 4, 8).translate(0, -0.3, 0);
+    geos[P.LEG_L] = geos[P.LEG_R] = new THREE.CapsuleGeometry(0.075, 0.74, 4, 8).translate(0, -0.45, 0);
+    geos[P.HAIR] = new THREE.SphereGeometry(0.29, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2).scale(0.5, 0.5, 0.52);
     geos[P.SOMBRERO] = coloredMerge([[new THREE.CylinderGeometry(0.62, 0.62, 0.05, 14), 0xffffff], [new THREE.CylinderGeometry(0.16, 0.24, 0.32, 10).translate(0, 0.17, 0), 0xffffff], [new THREE.CylinderGeometry(0.245, 0.245, 0.06, 10).translate(0, 0.05, 0), 0x8d3b2a]]);
+    geos[P.SOMBRERO].scale(0.6, 0.6, 0.6);
     geos[P.GORRA] = coloredMerge([[new THREE.CylinderGeometry(0.27, 0.29, 0.16, 10).translate(0, 0.08, 0), 0xffffff], [new THREE.BoxGeometry(0.32, 0.04, 0.22).translate(0, 0.02, 0.28), 0x111111]]);
     // Ojos: dos puntos oscuros fusionados en la cabeza
     geos[P.HEAD] = coloredMerge([[geos[P.HEAD], 0xffffff], [new THREE.SphereGeometry(0.045, 6, 4).translate(-0.1, 0.04, 0.24), 0x111111], [new THREE.SphereGeometry(0.045, 6, 4).translate(0.1, 0.04, 0.24), 0x111111],
@@ -52,6 +53,8 @@ export class CrowdRenderer {
       [new THREE.BoxGeometry(0.1, 0.025, 0.03).rotateZ(0.15).translate(-0.1, 0.13, 0.245), 0x2a1a10], [new THREE.BoxGeometry(0.1, 0.025, 0.03).rotateZ(-0.15).translate(0.1, 0.13, 0.245), 0x2a1a10],
       [new THREE.SphereGeometry(0.05, 6, 4).scale(1, 0.8, 1.2).translate(0, -0.02, 0.27), 0xe8b48a],
       [new THREE.TorusGeometry(0.06, 0.014, 4, 8, Math.PI).rotateZ(Math.PI).translate(0, -0.1, 0.25), 0x7a2a22]]);
+    geos[P.GORRA].scale(0.52, 0.52, 0.52);
+    geos[P.HEAD].scale(0.5, 0.52, 0.5); // proporción realista (cabeza ≈ 1/7.5 de la altura)
     // Vertex colors en blanco se multiplican por el color de instancia
     this.meshes = geos.map((g, i) => {
       const useVC = !!g.attributes.color;
@@ -99,15 +102,15 @@ export class CrowdRenderer {
       if (ch.pose === 'aim') { armR = -1.5; armL = -1.25; }
       else if (ch.pose === 'punch') { armR = -1.55 * Math.sin(clamp(ch.punchT / 0.25, 0, 1) * Math.PI); }
       else if (ch.pose === 'hands') { armR = armL = -2.9; }
-      this.part(P.TORSO, 0, 0.85, 0, 0, L.shirt);
-      this.part(P.HEAD, 0, 1.8, 0, 0, L.skin);
-      this.part(P.ARM_L, -0.37, 1.45, 0, armL, L.shirt);
-      this.part(P.ARM_R, 0.37, 1.45, 0, armR, L.shirt);
-      this.part(P.LEG_L, -0.14, 0.86, 0, sw, L.pants);
-      this.part(P.LEG_R, 0.14, 0.86, 0, -sw, L.pants);
-      if (L.hat === 1) this.part(P.SOMBRERO, 0, 1.98, 0, 0, L.hatColor || 0xe8d29a);
-      else if (L.hat === 2) this.part(P.GORRA, 0, 1.96, 0, 0, L.hatColor || 0x1a237e);
-      else this.part(P.HAIR, 0, 1.83, 0, 0, L.hair);
+      this.part(P.TORSO, 0, 0.9, 0, 0, L.shirt);
+      this.part(P.HEAD, 0, 1.68, 0, 0, L.skin);
+      this.part(P.ARM_L, -0.26, 1.46, 0, armL, L.shirt);
+      this.part(P.ARM_R, 0.26, 1.46, 0, armR, L.shirt);
+      this.part(P.LEG_L, -0.1, 0.92, 0, sw, L.pants);
+      this.part(P.LEG_R, 0.1, 0.92, 0, -sw, L.pants);
+      if (L.hat === 1) this.part(P.SOMBRERO, 0, 1.78, 0, 0, L.hatColor || 0xe8d29a);
+      else if (L.hat === 2) this.part(P.GORRA, 0, 1.77, 0, 0, L.hatColor || 0x1a237e);
+      else this.part(P.HAIR, 0, 1.7, 0, 0, L.hair);
     }
     for (const m of this.meshes) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
   }

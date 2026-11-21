@@ -2,16 +2,18 @@
 // Uso: node tools/osm-to-json.mjs tools/osm-raw.json js/world/mapData.js
 import { readFileSync, writeFileSync } from 'node:fs';
 
-const [, , inPath = 'tools/osm-raw.json', outPath = 'js/world/mapData.js'] = process.argv;
+const [, , inPath = 'tools/osm-raw-v2.json', outPath = 'js/world/mapData.js'] = process.argv;
 const raw = JSON.parse(readFileSync(inPath, 'utf8'));
 
 // Origen: Zócalo de Zacatlán. x = este, z = sur (convención de Three.js con -z = norte).
 const LAT0 = 19.9325, LON0 = -97.9606;
 const MX = 111320 * Math.cos((LAT0 * Math.PI) / 180), MZ = 110540;
 const proj = (lat, lon) => [(lon - LON0) * MX, -(lat - LAT0) * MZ];
-const LIMIT = 1150; // medio lado del mundo jugable (m)
+// Mundo rectangular: centro histórico + corredor de la carretera Interserrana al norte
+const B = { x0: -1400, x1: 1500, z0: -4400, z1: 1250 };
+const LIMIT = 1150;
 const r1 = (v) => Math.round(v * 10) / 10;
-const inside = ([x, z]) => Math.abs(x) < LIMIT && Math.abs(z) < LIMIT;
+const inside = ([x, z]) => x > B.x0 && x < B.x1 && z > B.z0 && z < B.z1;
 
 const ROAD = {
   primary: [0, 11], secondary: [1, 10], tertiary: [2, 9], unclassified: [3, 8],
@@ -39,7 +41,7 @@ const edgeX = (z) => {
   const t = Math.max(0, Math.min(1, (z - edge[i][0]) / 50));
   return edge[i][1] * (1 - t) + edge[i + 1][1] * t;
 };
-const inWorld = (p) => inside(p) && p[0] < edgeX(p[1]) - 6;
+const inWorld = (p) => inside(p); // la barranca ahora sale del modelo de elevación
 
 // --- Grafo de calles ---
 const nodeIndex = new Map();
@@ -87,9 +89,9 @@ for (const e of raw.elements) {
 
 const out = {
   attribution: '© OpenStreetMap contributors (ODbL)',
-  origin: [LAT0, LON0], limit: LIMIT,
+  origin: [LAT0, LON0], limit: LIMIT, bounds: B,
   nodes, ways, areas, buildings, pois, viewpoints,
-  river: riverPts.filter((p) => Math.abs(p[1]) < LIMIT + 300).flatMap((p) => p.map(r1)),
+  river: riverPts.filter((p) => p[1] > B.z0 - 300 && p[1] < B.z1 + 300).flatMap((p) => p.map(r1)),
   edge,
 };
 writeFileSync(outPath, '// Generado por tools/osm-to-json.mjs. Datos © OpenStreetMap contributors (ODbL).\nexport default ' + JSON.stringify(out) + ';\n');

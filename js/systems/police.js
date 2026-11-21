@@ -66,8 +66,8 @@ export class Police {
       [new THREE.BoxGeometry(0.1, 0.1, 3).translate(0.9, -1.4, 0), 0x333333],
     ]);
     this.heli = new THREE.Group();
-    const hb = new THREE.Mesh(body, new THREE.MeshToonMaterial({ vertexColors: true, gradientMap }));
-    this.rotor = new THREE.Mesh(new THREE.BoxGeometry(9, 0.08, 0.35), new THREE.MeshToonMaterial({ color: 0x222222, gradientMap }));
+    const hb = new THREE.Mesh(body, new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, vertexColors: true }));
+    this.rotor = new THREE.Mesh(new THREE.BoxGeometry(9, 0.08, 0.35), new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, color: 0x222222 }));
     this.rotor.position.y = 1.6;
     this.beam = new THREE.Mesh(new THREE.ConeGeometry(7, 46, 16, 1, true).translate(0, -23, 0), new THREE.MeshBasicMaterial({ color: 0xfff8e1, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide }));
     this.heli.add(hb, this.rotor, this.beam);
@@ -243,7 +243,7 @@ export class Police {
 export class Pickups {
   constructor(game) {
     this.g = game; this.items = [];
-    this.mesh = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.45, 0), new THREE.MeshToonMaterial({ gradientMap, emissive: 0x222222 }), 64);
+    this.mesh = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.45, 0), new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, emissive: 0x222222 }), 64);
     this.mesh.frustumCulled = false; this.mesh.count = 0; this.mesh.setColorAt(0, new THREE.Color());
     game.scene.add(this.mesh);
     this.m = new THREE.Matrix4(); this.q = new THREE.Quaternion(); this.v = new THREE.Vector3(); this.s = new THREE.Vector3(1, 1, 1); this.c = new THREE.Color(); this.t = 0;

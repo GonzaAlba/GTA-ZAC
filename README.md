@@ -31,12 +31,20 @@ Juego de mundo abierto en HTML5 (Three.js) ambientado en Zacatlán, Puebla, con 
 - Adoquín, guarniciones, pasos peatonales, árboles en racimo, jardineras y bancas.
 - Contorno de tinta, neblina en la barranca, domo de cielo con nubes y brillo de faroles de noche.
 
+## Gráficos v3 (realista estilizado)
+- **Mundo ampliado** hasta la carretera Interserrana (≈ 2.9 × 5.6 km) con datos de OpenStreetMap.
+- **Relieve real**: modelo digital de elevación abierto (AWS Terrain Tiles) corregido con las altitudes de 189 ubicaciones de panorámicas (`tools/dem_fetch.py`, `tools/panos-to-json.mjs`). La barranca y la sierra salen de los datos.
+- **Materiales PBR** con texturas CC0 de Poly Haven (estuco, piedra, teja, adoquín, asfalto, concreto, pasto, roca) y mapas normales.
+- **Cielo físico** con iluminación ambiental por imagen, oclusión ambiental, bloom, tonemapping ACES y antialias.
+- Personajes con proporciones realistas y autos con carrocería redondeada y pintura reflejante.
+
 ## Estructura
 - `tools/panos-to-json.mjs <tabla.md>`: extrae ubicaciones y altitudes a `js/world/panoData.js`.
+- `python -I tools/dem_fetch.py <cache> js/world/demData.js`: descarga el relieve y genera la rejilla de alturas.
 - `tools/osm-to-json.mjs`: convierte `tools/osm-raw.json` (Overpass/OpenStreetMap) en `js/world/mapData.js`.
 - `js/world`: terreno con la barranca, grafo vial con A*, ciudad procedural por chunks, monumentos.
 - `js/entities`: personajes y vehículos con render instanciado y el jugador.
 - `js/systems`: tráfico, peatones, policía y estrellas, combate, misiones y audio procedural.
 - `js/ui`: HUD, minimapa y GPS.
 
-Datos del mapa © OpenStreetMap contributors (ODbL). Personajes, marcas e historias son ficticios.
+Datos del mapa © OpenStreetMap contributors (ODbL). Elevación: AWS Terrain Tiles (Mapzen/Tilezen; SRTM y otros). Texturas: Poly Haven (CC0). three.js (MIT). Personajes, marcas e historias son ficticios.

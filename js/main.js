@@ -5,7 +5,8 @@ import { World } from './world/cityBuilder.js';
 import { Landmarks } from './world/landmarks.js';
 import { shared } from './world/materials.js';
 import { groundY } from './world/terrain.js';
-import { Post, Sky, makeLampGlow } from './world/post.js';
+import { Post, SkySystem, makeLampGlow } from './world/post.js';
+import { setAnisotropy } from './world/textures.js';
 import { CrowdRenderer } from './entities/characters.js';
 import { Vehicle, VehicleRenderer, PAINTS } from './entities/vehicle.js';
 import { Player } from './entities/player.js';
@@ -45,7 +46,8 @@ class Game {
     this.world.allowMirador = this.landmarks.allowMirador;
     this.buildTime = Math.round(performance.now() - t0);
     this.post = new Post(this.renderer);
-    this.skyDome = new Sky(this.scene);
+    this.skyDome = new SkySystem(this.scene, this.renderer);
+    setAnisotropy(this.renderer.capabilities.getMaxAnisotropy());
     this.lampGlow = makeLampGlow(this.scene, this.world.lampPositions, groundY);
 
     this.crowd = new CrowdRenderer(this.scene, 96);
@@ -89,6 +91,8 @@ class Game {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 0.9;
     this.scene = new THREE.Scene();
     this.sky = new THREE.Color(0x9fd4ff);
     this.scene.background = this.sky;
@@ -116,7 +120,7 @@ class Game {
     }
     if (shadows) { this.sun.shadow.mapSize.set(q.shadow, q.shadow); if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); this.sun.shadow.map = null; } }
     this.traffic.target = q.traffic; this.peds.target = q.peds;
-    if (this.post) this.post.enabled = name !== 'Baja';
+    if (this.post) { this.post.enabled = name !== 'Baja'; this.post.ao = name === 'Alta'; this.post.bloom = name !== 'Baja'; }
   }
 
   resize() {
@@ -357,24 +361,26 @@ class Game {
     const mist = this._mist || (this._mist = new THREE.Color(0xc9d6dc));
     this.sky.copy(cNight).lerp(cDay, day).lerp(cDusk, dusk * 0.6);
     const fogMist = clamp(0.35 + (this.fogBoost - 1) * 0.4, 0, 0.9);
-    this.scene.fog.color.copy(this.sky).lerp(mist, fogMist * (1 - night * 0.7));
+    this.scene.fog.color.copy(this.sky).lerp(mist, fogMist * (1 - night * 0.7)).multiplyScalar(0.78);
     const far = this.q.far / this.fogBoost;
-    this.scene.fog.far = far; this.scene.fog.near = Math.min(60, far * 0.15);
-    this.hemi.intensity = 0.35 + day * 0.85;
+    this.scene.fog.far = far * 1.5; this.scene.fog.near = Math.min(140, far * 0.3);
+    this.hemi.intensity = 0.18 + day * 0.32;
     this.hemi.color.setHSL(0.58, 0.5, 0.55 + day * 0.3);
-    this.sun.intensity = 0.25 + day * 1.5;
+    this.sun.intensity = 0.3 + day * 2.6;
     this.sun.color.copy(this._sunC || (this._sunC = new THREE.Color())).setRGB(1, 0.85 + day * 0.1, 0.7 + day * 0.2);
     if (night > 0.5) this.sun.color.setRGB(0.55, 0.65, 1);
     shared.uNight.value = night;
-    if (this.world.lampMat) this.world.lampMat.emissiveIntensity = night * 2.2;
+    if (this.world.lampMat) this.world.lampMat.emissiveIntensity = night * 4.0;
+    this.renderer.toneMappingExposure = 0.42 + night * 0.6;
     if (this.lampGlow) this.lampGlow.material.opacity = night * 0.9;
-    if (this.post) this.post.mat.uniforms.uMist.value.copy(this.scene.fog.color);
+    if (this.post) this.post.comp.uniforms.uMist.value.copy(this.scene.fog.color);
     this._skyTop = (this._skyTop || new THREE.Color()).copy(this.sky).multiplyScalar(0.72).lerp(this._cNight, night * 0.5);
     this.nightF = night;
     const ang = ((m - 360) / 1440) * Math.PI * 2;
     this.sunDir = this.sunDir || new THREE.Vector3();
     const up = elev > 0 ? 1 : -1; // de noche la luz principal es la luna (opuesta)
     this.sunDir.set(Math.cos(ang) * up * 0.8, Math.max(0.35, Math.abs(elev)), 0.45).normalize();
+    this.trueSun = (this.trueSun || new THREE.Vector3()).set(Math.cos(ang) * 0.8, elev, 0.45).normalize();
   }
 
   render(alpha, dt) {
@@ -397,8 +403,8 @@ class Game {
     this.world.updateVisibility(this.cam.x, this.cam.z, this.scene.fog.far);
     this.vrender.render(this.vehicles, alpha, this.cam.x, this.cam.z, dt, this.scene.fog.far);
     this.crowd.render(this.charLists, alpha, this.cam.x, this.cam.z, Math.min(150, this.scene.fog.far));
-    this.skyDome.update(dt, this.camera.position, this._skyTop, this.scene.fog.color, this.nightF);
-    this.post.render(this.scene, this.camera, 0);
+    this.skyDome.update(dt, this.camera.position, this.trueSun, this.nightF);
+    this.post.render(this.scene, this.camera);
     this.pv.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.pv);
   }
