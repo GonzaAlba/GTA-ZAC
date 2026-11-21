@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { gradientMap } from '../world/materials.js';
 import { coloredMerge } from '../world/cityBuilder.js';
 import { lerp, lerpAngle, clamp } from '../util.js';
+import { groundY } from '../world/terrain.js';
 
 export const SKINS = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac, 0xd4a373];
 export const SHIRTS = [0xe53935, 0x1e88e5, 0x43a047, 0xfdd835, 0x8e24aa, 0xff7043, 0x26c6da, 0xf5f5f5, 0xec407a, 0x6d4c41];
@@ -46,7 +47,11 @@ export class CrowdRenderer {
     geos[P.SOMBRERO] = coloredMerge([[new THREE.CylinderGeometry(0.62, 0.62, 0.05, 14), 0xffffff], [new THREE.CylinderGeometry(0.16, 0.24, 0.32, 10).translate(0, 0.17, 0), 0xffffff], [new THREE.CylinderGeometry(0.245, 0.245, 0.06, 10).translate(0, 0.05, 0), 0x8d3b2a]]);
     geos[P.GORRA] = coloredMerge([[new THREE.CylinderGeometry(0.27, 0.29, 0.16, 10).translate(0, 0.08, 0), 0xffffff], [new THREE.BoxGeometry(0.32, 0.04, 0.22).translate(0, 0.02, 0.28), 0x111111]]);
     // Ojos: dos puntos oscuros fusionados en la cabeza
-    geos[P.HEAD] = coloredMerge([[geos[P.HEAD], 0xffffff], [new THREE.SphereGeometry(0.045, 6, 4).translate(-0.1, 0.04, 0.24), 0x111111], [new THREE.SphereGeometry(0.045, 6, 4).translate(0.1, 0.04, 0.24), 0x111111]]);
+    geos[P.HEAD] = coloredMerge([[geos[P.HEAD], 0xffffff], [new THREE.SphereGeometry(0.045, 6, 4).translate(-0.1, 0.04, 0.24), 0x111111], [new THREE.SphereGeometry(0.045, 6, 4).translate(0.1, 0.04, 0.24), 0x111111],
+      [new THREE.SphereGeometry(0.022, 4, 3).translate(-0.085, 0.06, 0.275), 0xffffff], [new THREE.SphereGeometry(0.022, 4, 3).translate(0.115, 0.06, 0.275), 0xffffff],
+      [new THREE.BoxGeometry(0.1, 0.025, 0.03).rotateZ(0.15).translate(-0.1, 0.13, 0.245), 0x2a1a10], [new THREE.BoxGeometry(0.1, 0.025, 0.03).rotateZ(-0.15).translate(0.1, 0.13, 0.245), 0x2a1a10],
+      [new THREE.SphereGeometry(0.05, 6, 4).scale(1, 0.8, 1.2).translate(0, -0.02, 0.27), 0xe8b48a],
+      [new THREE.TorusGeometry(0.06, 0.014, 4, 8, Math.PI).rotateZ(Math.PI).translate(0, -0.1, 0.25), 0x7a2a22]]);
     // Vertex colors en blanco se multiplican por el color de instancia
     this.meshes = geos.map((g, i) => {
       const useVC = !!g.attributes.color;
@@ -87,7 +92,7 @@ export class CrowdRenderer {
       this.qt.setFromAxisAngle(this.ax, -ch.tilt);
       this.q.multiply(this.qt);
       const sc = ch.look.scale || 1;
-      this.B.compose(this.v.set(x, y + (ch.tilt ? 0.18 * (ch.tilt / 1.57) : 0), z), this.q, this.one.setScalar(sc));
+      this.B.compose(this.v.set(x, groundY(x, z) + y + (ch.tilt ? 0.18 * (ch.tilt / 1.57) : 0), z), this.q, this.one.setScalar(sc));
       const L = ch.look;
       const sw = Math.sin(ch.phase) * clamp(ch.speed / 3.5, 0, 1) * 0.85;
       let armR = -sw * 0.9, armL = sw * 0.9;

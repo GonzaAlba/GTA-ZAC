@@ -4,6 +4,7 @@ import { BTN } from '../input/gamepad.js';
 import { WEAPONS } from '../systems/combat.js';
 import { resolveCircle } from '../systems/physics.js';
 import { clamp, dampAngle, wrapAngle } from '../util.js';
+import { groundY } from '../world/terrain.js';
 
 const res = { nx: 0, nz: 0, impact: 0, hit: false };
 
@@ -203,10 +204,10 @@ export class Player {
     const h = this.hero, w = this.weapon, ch = this.ch, g = this.g;
     if (h.ammo[h.weapon] <= 0) { this.cycleWeapon(-1); return; }
     this.fireT = w.rate; h.ammo[h.weapon]--;
-    const ox = ch.x + Math.sin(ch.yaw) * 0.6, oz = ch.z + Math.cos(ch.yaw) * 0.6, oy = 1.45;
+    const ox = ch.x + Math.sin(ch.yaw) * 0.6, oz = ch.z + Math.cos(ch.yaw) * 0.6, oy = groundY(ch.x, ch.z) + ch.y + 1.45;
     let dx, dy, dz;
     const t = this.aimTarget;
-    if (t) { dx = t.x - ox; dz = t.z - oz; dy = (t.isDown ? 0.4 : 1.15) - oy; }
+    if (t) { dx = t.x - ox; dz = t.z - oz; dy = groundY(t.x, t.z) + (t.isDown ? 0.4 : 1.15) - oy; }
     else if (this.aiming) { dx = Math.sin(cam.yaw) * Math.cos(cam.pitch); dz = Math.cos(cam.yaw) * Math.cos(cam.pitch); dy = -Math.sin(cam.pitch) + 0.12; }
     else { dx = Math.sin(ch.yaw); dz = Math.cos(ch.yaw); dy = 0; }
     const L = Math.hypot(dx, dy, dz);

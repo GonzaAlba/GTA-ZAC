@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import map from './mapData.js';
+import panos from './panoData.js';
 import { clamp, smoothstep, hash2 } from '../util.js';
 
 const E = map.edge, E0 = E[0][0];
@@ -13,11 +14,46 @@ export function edgeX(z) {
   return E[i][1] * (1 - t) + E[i + 1][1] * t;
 }
 
-// El pueblo es una meseta (y = 0). La barranca cae al este y la sierra rodea el mapa.
+// ---------------- Relieve real del centro ----------------
+// Las altitudes de las ubicaciones de panorámicas (2030–2058 m) definen la pendiente del pueblo:
+// plano de mínimos cuadrados + residuo suavizado con núcleo gaussiano, en una rejilla de 8 m.
+const GS = 8, GN = 300, GO = -1200; // rejilla 2400 m
+const plateauGrid = (() => {
+  const P = panos.length ? panos : [{ x: 0, z: 0, alt: 0 }];
+  // Plano a + b·x + c·z por mínimos cuadrados (ecuaciones normales 3×3)
+  let n = 0, sx = 0, sz = 0, sxx = 0, szz = 0, sxz = 0, sy = 0, sxy = 0, szy = 0;
+  for (const p of P) { n++; sx += p.x; sz += p.z; sxx += p.x * p.x; szz += p.z * p.z; sxz += p.x * p.z; sy += p.alt; sxy += p.x * p.alt; szy += p.z * p.alt; }
+  const M = [[n, sx, sz], [sx, sxx, sxz], [sz, sxz, szz]], v = [sy, sxy, szy];
+  const det = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  const D = det(M) || 1;
+  const col = (k) => det(M.map((r, i) => r.map((c, j) => (j === k ? v[i] : c)))) / D;
+  const a = col(0), b = col(1), c = col(2);
+  const plane = (x, z) => a + b * clamp(x, -650, 650) + c * clamp(z, -650, 650);
+  const res = P.map((p) => ({ x: p.x, z: p.z, r: p.alt - plane(p.x, p.z) }));
+  const raw = (x, z) => {
+    let w = 0, s = 0;
+    for (const p of res) { const d2 = (p.x - x) ** 2 + (p.z - z) ** 2, k = Math.exp(-d2 / (2 * 75 * 75)); w += k; s += k * p.r; }
+    return plane(x, z) + (w > 1e-6 ? (s / w) * Math.min(1, w * 2) : 0);
+  };
+  const base = raw(0, 0); // el zócalo es y = 0
+  const g = new Float32Array(GN * GN);
+  for (let j = 0; j < GN; j++) for (let i = 0; i < GN; i++) g[j * GN + i] = raw(GO + i * GS, GO + j * GS) - base;
+  return g;
+})();
+
+// Altura del suelo urbano (sin barranca ni sierra): bilineal sobre la rejilla. Barata.
+export function groundY(x, z) {
+  let fx = (x - GO) / GS, fz = (z - GO) / GS;
+  fx = fx < 0 ? 0 : fx > GN - 1.001 ? GN - 1.001 : fx; fz = fz < 0 ? 0 : fz > GN - 1.001 ? GN - 1.001 : fz;
+  const i = fx | 0, j = fz | 0, tx = fx - i, tz = fz - j, k = j * GN + i, g = plateauGrid;
+  return (g[k] * (1 - tx) + g[k + 1] * tx) * (1 - tz) + (g[k + GN] * (1 - tx) + g[k + GN + 1] * tx) * tz;
+}
+
+// El pueblo sigue la pendiente real; la barranca cae al este y la sierra rodea el mapa.
 export function heightAt(x, z) {
   const d = x - edgeX(z);
-  let h = 0;
-  if (d > 0) h = -140 * smoothstep(0, 110, d) + 95 * smoothstep(380, 700, d);
+  let h = groundY(x, z);
+  if (d > 0) h += -140 * smoothstep(0, 110, d) + 95 * smoothstep(380, 700, d);
   const m = Math.max(Math.abs(x), Math.abs(z));
   if (m > map.limit + 20) h += 280 * smoothstep(map.limit + 20, map.limit + 650, m);
   if (d > 4 || m > map.limit + 20) h += (hash2(Math.round(x / 9), Math.round(z / 9)) - 0.5) * 6;
@@ -44,7 +80,7 @@ export function constrainWorld(e, r, out, allowMirador = null) {
 }
 
 export function buildTerrain(scene, gradientMap) {
-  const SIZE = 3800, SEG = 190;
+  const SIZE = 3800, SEG = 200;
   const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;

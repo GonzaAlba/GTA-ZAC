@@ -1,6 +1,7 @@
 // Disparo hitscan, trazadoras, explosiones y efectos (todo con buffers preasignados).
 import * as THREE from 'three';
 import { clamp } from '../util.js';
+import { groundY } from '../world/terrain.js';
 
 export const WEAPONS = [
   { id: 'punos', name: 'Puños', icon: '👊', melee: true },
@@ -51,7 +52,7 @@ export class Combat {
     const g = this.g;
     for (const list of g.charLists) for (const c of list) {
       if (c === ignoreChar || !c.onFoot || !c.visible) continue;
-      const cy = c.isDown ? 0.35 : 1.15, rad = c.isDown ? 0.6 : 0.55;
+      const cy = groundY(c.x, c.z) + c.y + (c.isDown ? 0.35 : 1.15), rad = c.isDown ? 0.6 : 0.55;
       const lx = c.x - ox, ly = cy - oy, lz = c.z - oz;
       const tca = lx * dx + ly * dy + lz * dz; if (tca < 0 || tca > h.t) continue;
       const d2 = lx * lx + ly * ly + lz * lz - tca * tca;
@@ -72,13 +73,13 @@ export class Combat {
         t0 = Math.max(t0, a); t1 = Math.min(t1, b); if (t0 > t1) { ok = false; break; }
       }
       if (!ok) continue;
-      const y = oy + dy * t0;
+      const y = oy + dy * t0 - groundY(v.x, v.z);
       if (y < 0 || y > v.spec.hgt + 0.2) continue;
       if (t0 < h.t) { h.t = t0; h.type = 'veh'; h.target = v; }
     }
     const bx = ox + dx * h.t, bz = oz + dz * h.t;
     const out = this._o || (this._o = { t: 1 });
-    if (g.world.segmentBlocked(ox, oz, bx, bz, oy + dy * h.t * 0.5, out)) { h.t *= out.t; h.type = 'wall'; h.target = null; }
+    if (g.world.segmentBlocked(ox, oz, bx, bz, oy + dy * h.t * 0.5 - groundY(ox, oz), out)) { h.t *= out.t; h.type = 'wall'; h.target = null; }
     h.x = ox + dx * h.t; h.y = oy + dy * h.t; h.z = oz + dz * h.t;
     return h;
   }
@@ -132,7 +133,8 @@ export class Combat {
     g.audio.explosion(d);
     this.shake = Math.max(this.shake, clamp(1.4 - d / 60, 0, 1.4));
     g.input.rumble(clamp(1 - d / 50, 0, 1), 0.8, 500);
-    for (let i = 0; i < 6; i++) this.effect(x + (Math.random() - 0.5) * 3, 1 + Math.random() * 2, z + (Math.random() - 0.5) * 3, 0.6 + Math.random() * 0.6, 1, 4 + Math.random() * 2, i % 2 ? 0xffeb3b : 0xff7043, 0x424242, 3);
+    const gy = groundY(x, z);
+    for (let i = 0; i < 6; i++) this.effect(x + (Math.random() - 0.5) * 3, gy + 1 + Math.random() * 2, z + (Math.random() - 0.5) * 3, 0.6 + Math.random() * 0.6, 1, 4 + Math.random() * 2, i % 2 ? 0xffeb3b : 0xff7043, 0x424242, 3);
     for (const list of g.charLists) for (const c of list) {
       if (!c.onFoot) continue;
       const dd = Math.hypot(c.x - x, c.z - z);

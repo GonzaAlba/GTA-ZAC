@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import map from './mapData.js';
 import { coloredMerge, fitObb, centroid } from './cityBuilder.js';
 import { gradientMap, shared, toon } from './materials.js';
-import { edgeX, heightAt } from './terrain.js';
+import { edgeX, heightAt, groundY } from './terrain.js';
 
 const vcMat = () => new THREE.MeshToonMaterial({ vertexColors: true, gradientMap });
 
@@ -15,9 +15,9 @@ class Parts {
   cyl(rt, rb, h, x, y, z, color, seg = 10) { return this.add(new THREE.CylinderGeometry(rt, rb, h, seg).translate(0, h / 2, 0), color, x, y, z); }
   cone(r, h, x, y, z, color, seg = 10) { return this.add(new THREE.ConeGeometry(r, h, seg).translate(0, h / 2, 0), color, x, y, z); }
   dome(r, x, y, z, color) { return this.add(new THREE.SphereGeometry(r, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), color, x, y, z); }
-  mesh(x, z, a) {
+  mesh(x, z, a, y) {
     const m = new THREE.Mesh(coloredMerge(this.list), vcMat());
-    m.position.set(x, 0, z); m.rotation.y = -a;
+    m.position.set(x, y ?? groundY(x, z) - 0.6, z); m.rotation.y = -a;
     m.castShadow = m.receiveShadow = true;
     return m;
   }
@@ -101,7 +101,7 @@ export class Landmarks {
       add(p.mesh(o.x, o.z, o.a), o, 10);
       world.places['Palacio Municipal'] = [o.x, o.z];
       const sign = canvasSign('PALACIO MUNICIPAL', '#8c4a33');
-      sign.position.set(o.x, 7.2, o.z); sign.rotation.y = -o.a + (long ? Math.PI : -Math.PI / 2);
+      sign.position.set(o.x, 7.2 + groundY(o.x, o.z) - 0.6, o.z); sign.rotation.y = -o.a + (long ? Math.PI : -Math.PI / 2);
       S.add(sign);
     }
 
@@ -122,13 +122,13 @@ export class Landmarks {
     // --- Reloj Floral (manecillas sincronizadas con la hora del juego) ---
     {
       const rx = zoc[0] + 2, rz = zoc[1] + 26;
-      const grp = new THREE.Group(); grp.position.set(rx, 0, rz);
+      const grp = new THREE.Group(); grp.position.set(rx, groundY(rx, rz) - 0.3, rz);
       const p = new Parts();
       p.cyl(5.6, 6, 0.8, 0, 0, 0, 0x8a7a68, 24);
       const rings = [[5.2, 0xd8343f], [4.4, 0xf2c84b], [3.6, 0x8e44ad], [2.8, 0xf6f1e7], [2.0, 0xe56b9a], [1.2, 0x5fae3a]];
       rings.forEach(([r, c], i) => p.cyl(r, r, 0.3 + i * 0.05, 0, 0.8, 0, c, 28));
       for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; p.box(0.5, 0.5, 0.9, Math.sin(a) * 4.8, 1.0, -Math.cos(a) * 4.8, 0xffffff, -a); }
-      const face = p.mesh(0, 0, 0); face.position.set(0, 0, 0); face.rotation.x = -0.45;
+      const face = p.mesh(0, 0, 0, 0); face.rotation.x = -0.45;
       const handM = toon(0x1d1f24);
       const hour = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.25, 3).translate(0, 0, -1.5), handM);
       const minute = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 4.4).translate(0, 0, -2.2), handM);
@@ -179,9 +179,9 @@ export class Landmarks {
       p.box(22, 0.4, 0.3, 11, 1.1, -2.2, 0xcfd8dc).box(22, 0.4, 0.3, 11, 1.1, 2.2, 0xcfd8dc).box(0.3, 0.4, 4.6, 22, 1.1, 0, 0xcfd8dc);
       for (let x = 0; x <= 22; x += 2) { p.box(0.15, 1.1, 0.15, x, 0, -2.2, 0x9aa4a8); p.box(0.15, 1.1, 0.15, x, 0, 2.2, 0x9aa4a8); }
       p.box(2, 0.6, 6, -1, -0.6, 0, 0x8f7b62);
-      const frame = p.mesh(ex, mz, 0);
+      const my = groundY(ex, mz), frame = p.mesh(ex, mz, 0, my);
       const glass = new THREE.Mesh(new THREE.BoxGeometry(22, 0.15, 4.4).translate(11, -0.08, 0), new THREE.MeshToonMaterial({ color: 0x9fe3ff, transparent: true, opacity: 0.35, gradientMap, depthWrite: false }));
-      glass.position.set(ex, 0, mz);
+      glass.position.set(ex, my, mz);
       S.add(frame, glass);
       this.mirador = { x0: ex - 3, x1: ex + 22, z0: mz - 2, z1: mz + 2 };
       world.places['Mirador de Cristal'] = [ex - 4, mz];
@@ -204,7 +204,7 @@ export class Landmarks {
       });
       const fall = new THREE.Mesh(g, mat);
       // Inclinada siguiendo la pared del cañón
-      const top = new THREE.Vector3(ex + 3, 0, cz), bot = new THREE.Vector3(ex + 75, heightAt(ex + 75, cz) + 1, cz);
+      const top = new THREE.Vector3(ex + 3, groundY(ex, cz), cz), bot = new THREE.Vector3(ex + 75, heightAt(ex + 75, cz) + 1, cz);
       const yAx = top.clone().sub(bot), len = yAx.length(); yAx.normalize();
       const xAx = new THREE.Vector3(0, 0, 1), zAx = new THREE.Vector3().crossVectors(xAx, yAx);
       fall.matrixAutoUpdate = false;
@@ -224,11 +224,13 @@ export class Landmarks {
       for (let z = -lim; z < lim; z += 4) {
         if (this.mirador && z > this.mirador.z0 - 2 && z < this.mirador.z1 + 2) continue;
         const x0 = edgeX(z) - 2.2, x1 = edgeX(z + 4) - 2.2;
-        p.box(0.2, 1, 0.2, x0, 0, z, 0x6b4a2f);
+        const gy0 = groundY(x0, z), gy1 = groundY(x1, z + 4);
+        p.box(0.2, 1, 0.2, x0, gy0, z, 0x6b4a2f);
         const L = Math.hypot(x1 - x0, 4), a = Math.atan2(x1 - x0, 4);
-        p.add(new THREE.BoxGeometry(0.12, 0.18, L).translate(0, 0.85, L / 2), 0x8a6a4a, x0, 0, z, a);
+        const rail = new THREE.BoxGeometry(0.12, 0.18, L).translate(0, 0.85, L / 2); rail.rotateX(-Math.atan2(gy1 - gy0, L));
+        p.add(rail, 0x8a6a4a, x0, gy0, z, a);
       }
-      S.add(p.mesh(0, 0, 0));
+      S.add(p.mesh(0, 0, 0, 0));
     }
 
     this.buildServices(world);
@@ -275,7 +277,7 @@ export class Landmarks {
       const s = canvasSign(label, labelBg);
       // Letrero en la fachada que da a la calle
       const nx = lot.fx - lot.x, nz = lot.fz - lot.z, n = Math.hypot(nx, nz);
-      s.position.set(lot.x + (nx / n) * (D / 2 + 0.06), H - 1.2, lot.z + (nz / n) * (D / 2 + 0.06));
+      s.position.set(lot.x + (nx / n) * (D / 2 + 0.06), H - 1.8 + groundY(lot.x, lot.z), lot.z + (nz / n) * (D / 2 + 0.06));
       s.rotation.y = Math.atan2(nx, nz);
       this.scene.add(s);
     }

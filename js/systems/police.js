@@ -7,6 +7,7 @@ import { resolveCircle } from './physics.js';
 import { gradientMap } from '../world/materials.js';
 import { coloredMerge } from '../world/cityBuilder.js';
 import { clamp, rng, dampAngle, damp } from '../util.js';
+import { groundY } from '../world/terrain.js';
 
 const r = rng(1312);
 const res = { nx: 0, nz: 0, impact: 0, hit: false };
@@ -184,10 +185,10 @@ export class Police {
         c.shootT -= dt;
         if (canSee && c.shootT <= 0 && !P.dead) {
           c.shootT = COP_WEAPON.rate * (0.8 + r() * 0.6);
-          const oy = 1.4, L = Math.hypot(dx, dz) || 1;
+          const oy = groundY(c.x, c.z) + 1.4, L = Math.hypot(dx, dz) || 1;
           const miss = r() > clamp(0.5 - d * 0.012 - (P.inVehicle ? 0.15 : 0), 0.08, 0.45);
           const ex = miss ? (r() - 0.5) * 3 : 0, ez = miss ? (r() - 0.5) * 3 : 0;
-          const tx = p.x + ex - c.x, tz = p.z + ez - c.z, ty = 1.0 - oy, TL = Math.hypot(tx, ty, tz);
+          const tx = p.x + ex - c.x, tz = p.z + ez - c.z, ty = groundY(p.x, p.z) + 1.0 - oy, TL = Math.hypot(tx, ty, tz);
           const h = g.combat.fire(c, COP_WEAPON, c.x + (dx / L) * 0.5, oy, c.z + (dz / L) * 0.5, tx / TL, ty / TL, tz / TL, false, null);
           if (P.inVehicle && h.type === 'veh' && h.target === P.vehicle) P.vehicle.damage(3);
         }
@@ -217,14 +218,14 @@ export class Police {
     if (want) {
       h.position.x = damp(h.position.x, p.x - 8, 0.6, dt);
       h.position.z = damp(h.position.z, p.z - 8, 0.6, dt);
-      h.position.y = damp(h.position.y, 45, 1, dt);
+      h.position.y = damp(h.position.y, groundY(p.x, p.z) + 45, 1, dt);
       h.rotation.y = dampAngle(h.rotation.y, Math.atan2(p.x - h.position.x, p.z - h.position.z), 2, dt);
       h.rotation.x = 0.12;
       if (this.g.wanted.level >= 5) {
         this.heliShootT -= dt;
         if (this.heliShootT <= 0) {
           this.heliShootT = 0.9;
-          const o = h.position, tx = p.x + (r() - 0.5) * 6 - o.x, ty = 1 - (o.y - 1), tz = p.z + (r() - 0.5) * 6 - o.z, L = Math.hypot(tx, ty, tz);
+          const o = h.position, tx = p.x + (r() - 0.5) * 6 - o.x, ty = groundY(p.x, p.z) + 1 - (o.y - 1.5), tz = p.z + (r() - 0.5) * 6 - o.z, L = Math.hypot(tx, ty, tz);
           this.g.combat.fire(null, { rate: 0, dmg: 9, spread: 0.02, range: 120 }, o.x, o.y - 1.5, o.z, tx / L, ty / L, tz / L, false, null);
         }
       }
@@ -263,7 +264,7 @@ export class Pickups {
         continue;
       }
       this.q.setFromAxisAngle(this.v.set(0, 1, 0), this.t * 2 + i);
-      this.m.compose(this.v.set(it.x, 0.9 + Math.sin(this.t * 3 + i) * 0.15, it.z), this.q, this.s);
+      this.m.compose(this.v.set(it.x, groundY(it.x, it.z) + 0.9 + Math.sin(this.t * 3 + i) * 0.15, it.z), this.q, this.s);
       this.mesh.setMatrixAt(n, this.m); this.mesh.setColorAt(n, this.c.set(this.COL[it.kind] || 0xffffff)); n++;
     }
     this.mesh.count = n; this.mesh.instanceMatrix.needsUpdate = true; if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;

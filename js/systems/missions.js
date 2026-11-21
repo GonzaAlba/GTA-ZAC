@@ -4,6 +4,7 @@ import { Vehicle } from '../entities/vehicle.js';
 import { Character, randomLook } from '../entities/characters.js';
 import { DriverAI } from './traffic.js';
 import { fmtMoney } from '../util.js';
+import { groundY } from '../world/terrain.js';
 
 // ---------------- Historia ----------------
 export const STORY = [
@@ -225,8 +226,9 @@ export class Missions {
   onCharDamaged(c, byPlayer) {}
 
   showMarker(x, z, r = 2) {
-    this.marker.visible = true; this.marker.position.set(x, 1.5, z); this.marker.scale.set(r / 2, 1, r / 2);
-    this.arrow.visible = true; this.arrow.position.set(x, 4.5 + Math.sin(this.t * 3) * 0.4, z); this.arrow.rotation.y = this.t * 2;
+    const gy = groundY(x, z);
+    this.marker.visible = true; this.marker.position.set(x, gy + 1.5, z); this.marker.scale.set(r / 2, 1, r / 2);
+    this.arrow.visible = true; this.arrow.position.set(x, gy + 4.5 + Math.sin(this.t * 3) * 0.4, z); this.arrow.rotation.y = this.t * 2;
   }
 
   update(dt) {
@@ -237,7 +239,7 @@ export class Missions {
       const m = this.next;
       if (!m) { this.startMarker.visible = false; return; }
       const [x, z] = this.startSpot(m);
-      this.startMarker.visible = true; this.startMarker.position.set(x, 1.2, z);
+      this.startMarker.visible = true; this.startMarker.position.set(x, groundY(x, z) + 1.2, z);
       this.startMarker.material.color.set(m.giver === 'Mateo' ? 0x4fc3f7 : 0xf06292);
       g.gps.set(x, z, m.giver === 'Mateo' ? '#4fc3f7' : '#f06292', !this.gpsForced);
       const near = Math.hypot(p.x - x, p.z - z) < 3.4;
@@ -257,7 +259,7 @@ export class Missions {
       case 'enter':
         if (!veh) return this.advance();
         this.showMarker(veh.x, veh.z, 1.6); this.marker.visible = false;
-        this.arrow.position.set(veh.x, veh.spec.hgt + 2 + Math.sin(this.t * 3) * 0.3, veh.z);
+        this.arrow.position.set(veh.x, groundY(veh.x, veh.z) + veh.spec.hgt + 2 + Math.sin(this.t * 3) * 0.3, veh.z);
         g.gps.set(veh.x, veh.z, '#4fc3f7');
         if (P.vehicle === veh) this.advance();
         break;
@@ -288,7 +290,7 @@ export class Missions {
       case 'chase': {
         if (!veh) return this.advance();
         this.marker.visible = false; this.arrow.visible = true;
-        this.arrow.position.set(veh.x, 3.5 + Math.sin(this.t * 3) * 0.3, veh.z);
+        this.arrow.position.set(veh.x, groundY(veh.x, veh.z) + 3.5 + Math.sin(this.t * 3) * 0.3, veh.z);
         g.gps.set(veh.x, veh.z, '#ef5350');
         // El Pelón pasea tranquilo hasta que te ve cerca; entonces huye a toda velocidad
         if (veh.ai && veh.ai.mode !== 'flee' && Math.hypot(veh.x - p.x, veh.z - p.z) < 70) { veh.ai.mode = 'flee'; veh.ai.aggr = 0.85; g.hud.say([['Citlali', '¡Ahí va el Pelón! ¡Que no se escape!']]); }

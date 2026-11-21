@@ -4,6 +4,7 @@ import { gradientMap } from '../world/materials.js';
 import { coloredMerge } from '../world/cityBuilder.js';
 import { resolveCircle } from '../systems/physics.js';
 import { clamp, lerp, lerpAngle, damp } from '../util.js';
+import { groundY } from '../world/terrain.js';
 
 // len, wid: dimensiones; maxV en m/s; acc, brk en m/s²; grip lateral; hp
 export const TYPES = {
@@ -62,6 +63,10 @@ export class Vehicle {
     }
     if (!inp.throttle && !inp.brake) acc -= Math.sign(vf) * Math.min(Math.abs(vf) / dt, 1.2 + sp * 0.05);
     acc -= vf * Math.abs(vf) * 0.0025;
+    // Pendiente real: la gravedad frena cuesta arriba y empuja cuesta abajo
+    const slope = (groundY(this.x + fx * 1.5, this.z + fz * 1.5) - groundY(this.x - fx * 1.5, this.z - fz * 1.5)) / 3;
+    acc -= 9.8 * slope * 0.7;
+    this.slope = slope;
     vf += acc * dt;
     if (inp.handbrake) vf *= Math.exp(-1.6 * dt);
     const grip = inp.handbrake ? 1.4 : S.grip * (this.dead ? 0.5 : 1);
@@ -180,7 +185,10 @@ function bodyGeometry(type) {
   box(W * 0.98, 0.18, 0.12, 0, 0.3, L / 2, BLK); box(W * 0.98, 0.18, 0.12, 0, 0.3, -L / 2, BLK);
   box(0.36, 0.2, 0.06, W / 2 - 0.3, 0.65, L / 2 + 0.01, HL); box(0.36, 0.2, 0.06, -W / 2 + 0.3, 0.65, L / 2 + 0.01, HL);
   box(0.32, 0.18, 0.06, W / 2 - 0.3, 0.65, -L / 2 - 0.01, TL); box(0.32, 0.18, 0.06, -W / 2 + 0.3, 0.65, -L / 2 - 0.01, TL);
-  box(0.06, 0.08, 0.12, W / 2 + 0.03, 1.0, L * 0.15, CH);
+  // Espejos, parrilla y placas
+  box(0.08, 0.12, 0.16, W / 2 + 0.05, 0.95, L * 0.12, BLK); box(0.08, 0.12, 0.16, -W / 2 - 0.05, 0.95, L * 0.12, BLK);
+  box(W * 0.5, 0.22, 0.05, 0, 0.55, L / 2 + 0.02, 0x2b2b2e); box(0.5, 0.16, 0.04, 0, 0.32, L / 2 + 0.07, 0xf5f5f5); box(0.5, 0.16, 0.04, 0, 0.5, -L / 2 - 0.07, 0xf5f5f5);
+  box(W * 1.01, 0.06, L * 0.7, 0, 0.62, 0, CH);
   return coloredMerge(parts);
 }
 
@@ -219,9 +227,13 @@ export class VehicleRenderer {
       const x = lerp(v.px, v.x, alpha), z = lerp(v.pz, v.z, alpha);
       if ((x - camX) ** 2 + (z - camZ) ** 2 > md2) continue;
       const yaw = lerpAngle(v.pyaw, v.yaw, alpha);
-      this.e.set(lerp(v.pPitch, v.pitch, alpha), yaw, lerp(v.pRoll, v.roll, alpha));
+      // Inclinación según el terreno (cabeceo y alabeo) + dinámica de la carrocería
+      const fx = Math.sin(yaw), fz = Math.cos(yaw), gy = groundY(x, z);
+      const gp = -Math.atan((groundY(x + fx * 1.5, z + fz * 1.5) - groundY(x - fx * 1.5, z - fz * 1.5)) / 3);
+      const gr = Math.atan((groundY(x + fz, z - fx) - groundY(x - fz, z + fx)) / 2);
+      this.e.set(lerp(v.pPitch, v.pitch, alpha) + gp, yaw, lerp(v.pRoll, v.roll, alpha) + gr);
       this.q.setFromEuler(this.e);
-      this.B.compose(this.v.set(x, 0.02, z), this.q, this.s.set(1, 1, 1));
+      this.B.compose(this.v.set(x, gy + 0.02, z), this.q, this.s.set(1, 1, 1));
       const m = this.meshes[v.type];
       m.setMatrixAt(m.count, this.B);
       m.setColorAt(m.count, v.dead ? this.burnt : this.c.set(v.paint));

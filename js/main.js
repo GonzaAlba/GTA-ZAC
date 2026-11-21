@@ -4,6 +4,8 @@ import { Input, BTN } from './input/gamepad.js';
 import { World } from './world/cityBuilder.js';
 import { Landmarks } from './world/landmarks.js';
 import { shared } from './world/materials.js';
+import { groundY } from './world/terrain.js';
+import { Post, Sky, makeLampGlow } from './world/post.js';
 import { CrowdRenderer } from './entities/characters.js';
 import { Vehicle, VehicleRenderer, PAINTS } from './entities/vehicle.js';
 import { Player } from './entities/player.js';
@@ -42,6 +44,9 @@ class Game {
     this.world.build(this.landmarks);
     this.world.allowMirador = this.landmarks.allowMirador;
     this.buildTime = Math.round(performance.now() - t0);
+    this.post = new Post(this.renderer);
+    this.skyDome = new Sky(this.scene);
+    this.lampGlow = makeLampGlow(this.scene, this.world.lampPositions, groundY);
 
     this.crowd = new CrowdRenderer(this.scene, 96);
     this.vrender = new VehicleRenderer(this.scene, 48);
@@ -111,6 +116,7 @@ class Game {
     }
     if (shadows) { this.sun.shadow.mapSize.set(q.shadow, q.shadow); if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); this.sun.shadow.map = null; } }
     this.traffic.target = q.traffic; this.peds.target = q.peds;
+    if (this.post) this.post.enabled = name !== 'Baja';
   }
 
   resize() {
@@ -302,8 +308,8 @@ class Game {
   updateCamera(alpha, dt) {
     const P = this.player, I = this.input, C = this.cam;
     let tx, tz, ty, follow = null;
-    if (P.inVehicle) { const v = P.vehicle; tx = lerp(v.px, v.x, alpha); tz = lerp(v.pz, v.z, alpha); ty = 1.6 + v.spec.hgt * 0.5; follow = v; }
-    else { const c = P.ch; tx = lerp(c.px, c.x, alpha); tz = lerp(c.pz, c.z, alpha); ty = 1.55 + c.y * 0.6; }
+    if (P.inVehicle) { const v = P.vehicle; tx = lerp(v.px, v.x, alpha); tz = lerp(v.pz, v.z, alpha); ty = groundY(tx, tz) + 1.6 + v.spec.hgt * 0.5; follow = v; }
+    else { const c = P.ch; tx = lerp(c.px, c.x, alpha); tz = lerp(c.pz, c.z, alpha); ty = groundY(tx, tz) + 1.55 + c.y * 0.6; }
     if (!this.paused && this.started) {
       C.yaw -= I.rx * 2.7 * dt; C.pitch = clamp(C.pitch + I.ry * 1.6 * dt, -0.25, 1.1);
       const moved = Math.abs(I.rx) + Math.abs(I.ry) > 0.05;
@@ -325,11 +331,11 @@ class Game {
     let cx = ox - fx * cp * C.dist, cz = oz - fz * cp * C.dist, cy = ty + sp * C.dist;
     // Evitar que la cámara atraviese edificios
     const o = this._co || (this._co = { t: 1 });
-    if (this.world.segmentBlocked(ox, oz, cx, cz, Math.min(ty, cy), o)) {
+    if (this.world.segmentBlocked(ox, oz, cx, cz, Math.min(ty, cy) - groundY(ox, oz), o)) {
       const t = Math.max(0.15, o.t - 0.08);
       cx = ox + (cx - ox) * t; cz = oz + (cz - oz) * t; cy = ty + (cy - ty) * t;
     }
-    cy = Math.max(cy, 0.6);
+    cy = Math.max(cy, groundY(cx, cz) + 0.6);
     const k = C.snap ? 1 : 1 - Math.exp(-18 * dt);
     C.x += (cx - C.x) * k; C.y += (cy - C.y) * k; C.z += (cz - C.z) * k;
     C.snap = false;
@@ -361,6 +367,9 @@ class Game {
     if (night > 0.5) this.sun.color.setRGB(0.55, 0.65, 1);
     shared.uNight.value = night;
     if (this.world.lampMat) this.world.lampMat.emissiveIntensity = night * 2.2;
+    if (this.lampGlow) this.lampGlow.material.opacity = night * 0.9;
+    if (this.post) this.post.mat.uniforms.uMist.value.copy(this.scene.fog.color);
+    this._skyTop = (this._skyTop || new THREE.Color()).copy(this.sky).multiplyScalar(0.72).lerp(this._cNight, night * 0.5);
     this.nightF = night;
     const ang = ((m - 360) / 1440) * Math.PI * 2;
     this.sunDir = this.sunDir || new THREE.Vector3();
@@ -374,20 +383,22 @@ class Game {
     // Sombras siguiendo al jugador, ajustadas a la rejilla de texels (sin parpadeo)
     const snap = 150 / (this.q.shadow || 1024);
     const sx = Math.round(tx / snap) * snap, sz = Math.round(tz / snap) * snap;
-    this.sun.position.set(sx + this.sunDir.x * 150, this.sunDir.y * 150, sz + this.sunDir.z * 150);
-    this.sun.target.position.set(sx, 0, sz);
+    const sgy = groundY(sx, sz);
+    this.sun.position.set(sx + this.sunDir.x * 150, sgy + this.sunDir.y * 150, sz + this.sunDir.z * 150);
+    this.sun.target.position.set(sx, sgy, sz);
     // Faros de noche
     const P = this.player;
     if (P.inVehicle && this.nightF > 0.3) {
       const v = P.vehicle, fx = Math.sin(v.yaw), fz = Math.cos(v.yaw);
       this.headlight.intensity = 60 * this.nightF;
-      this.headlight.position.set(v.x + fx * 2, 1.1, v.z + fz * 2);
-      this.headlight.target.position.set(v.x + fx * 22, 0, v.z + fz * 22);
+      this.headlight.position.set(v.x + fx * 2, groundY(v.x, v.z) + 1.1, v.z + fz * 2);
+      this.headlight.target.position.set(v.x + fx * 22, groundY(v.x + fx * 22, v.z + fz * 22), v.z + fz * 22);
     } else this.headlight.intensity = 0;
     this.world.updateVisibility(this.cam.x, this.cam.z, this.scene.fog.far);
     this.vrender.render(this.vehicles, alpha, this.cam.x, this.cam.z, dt, this.scene.fog.far);
     this.crowd.render(this.charLists, alpha, this.cam.x, this.cam.z, Math.min(150, this.scene.fog.far));
-    this.renderer.render(this.scene, this.camera);
+    this.skyDome.update(dt, this.camera.position, this._skyTop, this.scene.fog.color, this.nightF);
+    this.post.render(this.scene, this.camera, 0);
     this.pv.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.pv);
   }
